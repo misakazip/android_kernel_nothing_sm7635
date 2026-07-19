@@ -313,6 +313,7 @@ static int oom_evaluate_task(struct task_struct *task, void *arg)
 {
 	struct oom_control *oc = arg;
 	long points;
+	bool bypass = false;
 
 	if (oom_unkillable_task(task))
 		goto next;
@@ -341,6 +342,10 @@ static int oom_evaluate_task(struct task_struct *task, void *arg)
 		points = LONG_MAX;
 		goto select;
 	}
+
+	trace_android_vh_oom_evaluate_task_bypass(task, oc, &bypass);
+	if (bypass)
+		goto next;
 
 	points = oom_badness(task, oc->totalpages);
 	if (points == LONG_MIN || points < oc->chosen_points)
@@ -1297,12 +1302,17 @@ put_task:
 
 void add_to_oom_reaper(struct task_struct *p)
 {
+	bool thaw = false;
+
 	p = find_lock_task_mm(p);
 	if (!p)
 		return;
 
 	if (task_will_free_mem(p)) {
 		__mark_oom_victim(p);
+		trace_android_vh_thaw_killed_process(&thaw);
+		if (thaw)
+			thaw_process(p);
 		queue_oom_reaper(p);
 	}
 	task_unlock(p);
